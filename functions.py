@@ -91,7 +91,10 @@ def return_image_fns_dict(sanity_check=False):
     ('9', {'image_no': '9', 'video_no': '0', 'scan_dir': 'l', 'view_': 't',
             'y_actual': 'b', 'temporal_index': '40', 'video_filename': '0_l_t_b.avi'})
     """
-    image_fns = listdir("data/data/images")
+    try:
+        image_fns = listdir("data/data/images")
+    except FileNotFoundError as e:
+        image_fns = listdir("../data/data/images")
     image_fns_dict = {}
     # Loop over image file names
     for image_fn in image_fns:
@@ -130,7 +133,10 @@ def return_video_fns_dict(sanity_check=False):
     ...
     ('9', {'video_no': '9', 'scan_dir': 'l', 'view_': 't', 'y_actual': 'b'})
     """
-    video_fns = listdir("data/data/videos")
+    try:
+        video_fns = listdir("data/data/videos")
+    except FileNotFoundError as e:
+        video_fns = listdir("../data/data/videos")
     video_fns_dict = {}
     # Loop over image file names
     for video_fn in video_fns:
@@ -180,6 +186,8 @@ def dataloader():
         # item = {'image_no': '0', 'video_no': '1', ..., 'temporal_index': '94', 'video_filename': '1_r_t_b.avi'}
         video_name = '_'.join(list(video_dict[item["video_no"]].values())) + '.avi'
         video_data = unpack_video(f'data/data/videos/{video_name}')
+        if video_data is None:
+            video_data = unpack_video(f'../data/data/videos/{video_name}')
         data = get_continuous_frames(video_data, frame_index=int(item["temporal_index"]))
         data = np.expand_dims(data, axis=0)
         data = np.transpose(data, (0, 4, 1, 2, 3))
