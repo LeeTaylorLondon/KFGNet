@@ -8,6 +8,7 @@ import torch
 import random
 import numpy as np
 from os import listdir
+from collections import deque
 import scipy.ndimage as ndimage
 
 
@@ -249,7 +250,7 @@ def dataloader_augment():
         if number in test_set_numbers:
             try:
                 del image_dict[str(number)]
-            except KeyError as e:
+            except KeyError:
                 pass
 
     # Get a list of keys and shuffle them
@@ -272,8 +273,13 @@ def dataloader_augment():
             labels[1] = 1.0
         labels = torch.tensor(labels)
 
+        # Fix class 1,0 ratio of 4250 : 2380
+        if labels[0] == 1.0:
+            iters_ = 5
+        else:
+            iters_ = 9
         # Apply random modifications and iterate over the same 32 frames 5 times
-        for _ in range(5):
+        for _ in range(iters_):
             modified_data = data_augment(data)
             modified_data = np.expand_dims(modified_data, axis=0)
             modified_data = np.transpose(modified_data, (0, 4, 1, 2, 3))
@@ -331,6 +337,62 @@ def dataloader():
         # Pass C3D input and labels
         data = torch.from_numpy(data).float()
         yield data, labels
+
+
+def dataloader_augment_alternate():
+    """
+    write here
+    """
+    # Load image and video dictionaries
+    image_dict = return_image_fns_dict()
+    video_dict = return_video_fns_dict()
+
+    # Create two queues, one for each class
+    queue_0 = deque()
+    queue_1 = deque()
+
+    for key in keys:
+        item = image_dict[key]
+        video_name = '_'.join(list(video_dict[item["video_no"]].values())) + '.avi'
+        video_data = unpack_video(f'data/data/videos/{video_name}')
+        data = get_continuous_frames(video_data, frame_index=int(item["temporal_index"]))
+        labels = [0.0, 0.0]
+        if item["y_actual"] == 'b':
+            labels[0] = 1.0
+        else:
+            labels[1] = 1.0
+        labels = torch.tensor(labels)
+
+        # Depending on the label, append the data and labels to the appropriate queue
+        if labels[0] == 1.0:
+            queue_1.append((data, labels))
+        else:
+            queue_0.append((data, labels))
+
+    # Now, alternate between the two queues, yielding one item at a time
+    while queue_0 and queue_1:
+        for _ in range(5):  # Adjust this value as needed
+            if queue_1:
+                data, labels = queue_1.popleft()
+                modified_data = data_augment(data)
+                modified_data = np.expand_dims(modified_data, axis=0)
+                modified_data = np.transpose(modified_data, (0, 4, 1, 2, 3))
+                modified_data = (modified_data - np.min(modified_data)) / (
+                            np.max(modified_data) - np.min(modified_data))
+                modified_data = torch.from_numpy(modified_data.copy()).float()
+                yield modified_data, labels
+
+        for _ in range(9):  # Adjust this value as needed
+            if queue_0:
+                data, labels = queue_0.popleft()
+                modified_data = data_augment(data)
+                modified_data = np.expand_dims(modified_data, axis=0)
+                modified_data = np.transpose(modified_data, (0, 4, 1, 2, 3))
+                modified_data = (modified_data - np.min(modified_data)) / (
+                            np.max(modified_data) - np.min(modified_data))
+                modified_data = torch.from_numpy(modified_data.copy()).float()
+                yield modified_data, labels
+    ...
 
 
 def dataloader_test():

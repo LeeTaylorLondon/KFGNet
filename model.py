@@ -356,11 +356,27 @@ class C3D(nn.Module):
                 # Total Loss
                 loss = loss_cls + loss_motion
 
+                # # Average the loss
+                # loss = loss.mean()  # Todo: Average or sum loss?
+                # print(f"loss.mean() = {loss}, "
+                #       f"y_pred = {f.softmax(outputs[0], dim=0).detach().numpy()}, "
+                #       f"y_actual = {labels}")
+
                 # Average the loss
-                loss = loss.mean()  # Todo: Average or sum loss?
-                print(f"loss.mean() = {loss}, "
-                      f"y_pred = {f.softmax(outputs[0], dim=0).detach().numpy()}, "
+                loss = loss.sum()  # Todo: Average or sum loss?
+                y_pred = f.softmax(outputs[0], dim=0).detach().numpy()
+
+                ...
+
+                print(f"loss.sum() = {round(float(loss), 5)},       "
+                      f"y_pred = {round(float(y_pred[0]), 5)} {round(float(y_pred[1]), 5)},     "
                       f"y_actual = {labels}")
+
+                """
+                loss.sum() = 6.183663368225098, y_pred = [0.4722479 0.5277521], y_actual = tensor([1., 0.])
+                loss.sum() = 0.004501700401306152, y_pred = [1.0000000e+00 3.3208177e-14], y_actual = tensor([1., 0.])
+                loss.sum() = 0.007243692874908447, y_pred = [1.000000e+00 9.129069e-23], y_actual = tensor([1., 0.])
+                """
 
                 # back propagation, optimize weights
                 loss.backward()

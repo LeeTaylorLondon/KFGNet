@@ -3,8 +3,10 @@ Author: Lee Taylor
 
 test.py : test.py - test the C3D model from: https://arxiv.org/pdf/2206.13318v3.pdf
 """
+import random
+
 from model import C3D
-from functions import dataloader_test
+from functions import dataloader_test, data_augment
 import torch.nn.functional as f
 import torch
 from sklearn.metrics import confusion_matrix, accuracy_score, precision_score, recall_score, f1_score
@@ -18,24 +20,35 @@ if __name__ == '__main__':
     c3d = C3D(num_classes=2)
 
     # print(f"\nc3d.train_c3d() = {c3d.train_c3d(1)}")
-    c3d.load_checkpoint("checkpoints/augmented/C3D_at_epoch39.pth")
+    c3d.load_checkpoint("checkpoints/augmented_normalized_ratiosampling/C3D_at_epoch39.pth")
 
     preds = []
     labels_list = []
 
-    # outputs, vtemp = self(inputs)  # prediction, temporal weights
-    for i, data in enumerate(dataloader_test()):
-        # model input-output
-        inputs, labels = data
-        outputs, vtemp = c3d(inputs)
+    for loops in range(10):
+        # outputs, vtemp = self(inputs)  # prediction, temporal weights
+        inputs_list = list(dataloader_test())
+        random.shuffle(inputs_list)
+        for i, data in enumerate(inputs_list):
+            # model input-output
+            inputs, labels = data
 
-        outputs_vals = f.softmax(outputs[0], dim=0).detach().numpy()
-        outputs_vals_rounded = [round(outputs_vals[0]), round(outputs_vals[1])]
-        print(f"outputs = {outputs_vals_rounded}, labels = {labels}")
+            # data augmentation
+            # inputs = data_augment(inputs)
 
-        # Save predictions and labels for evaluation
-        preds.append(outputs_vals_rounded[0])
-        labels_list.append(int(labels[0]))
+            # acquire outputs from passed inputs
+            outputs, vtemp = c3d(inputs)
+
+            outputs_vals = f.softmax(outputs[0], dim=0).detach().numpy()
+            outputs_vals_rounded = [round(outputs_vals[0]), round(outputs_vals[1])]
+            print(f"outputs = {outputs_vals_rounded}, labels = {labels}")
+
+            # Save predictions and labels for evaluation
+            preds.append(outputs_vals_rounded[0])
+            labels_list.append(int(labels[0]))
+
+            # Mark end of test loop
+            pass
 
     print("Finished Predicting")
     print()
