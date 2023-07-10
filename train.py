@@ -5,7 +5,7 @@ file : train.py - train the C3D model from: https://arxiv.org/pdf/2206.13318v3.p
 """
 from os import listdir
 from model import *
-from functions import unpack_video, get_continuous_frames
+from functions import unpack_video, get_continuous_frames, data_augment
 
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -132,11 +132,15 @@ if __name__ == '__main__':
     # dataloader()
     # quit()
 
+    print(f"torch.device = {torch.device}")
+
     # Init. model
     s2m = stage2model = C3D(num_classes=2)
 
+    s2m.checkpoint_path = "checkpoints/augmented_normalized/"
+
     # Feed video data into lwC3D for training
-    s2m.train_c3d(trainloader=dataloader())
+    s2m.train_c3d()
 
     # Mark end of file
     pass

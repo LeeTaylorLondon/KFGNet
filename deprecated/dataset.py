@@ -117,7 +117,7 @@ def random_intensity_shift(volume, max_offset, max_scale_delta):
 
 if __name__ == '__main__':
     # Does not work - because of permute is wrong
-    filenames = listdir("data/data/videos")
+    filenames = listdir("../data/data/videos")
 
     # Ensure dataset.py is useable # file_names, transform=True, resize=(112, 112)
     video_dataset_object = vdo = VideoDataset(file_names=filenames, transform=False)

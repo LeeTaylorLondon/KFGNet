@@ -6,7 +6,11 @@ test.py : test.py - test the C3D model from: https://arxiv.org/pdf/2206.13318v3.
 from model import C3D
 from functions import dataloader_test
 import torch.nn.functional as f
+import torch
 from sklearn.metrics import confusion_matrix, accuracy_score, precision_score, recall_score, f1_score
+
+
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 
 if __name__ == '__main__':
@@ -14,7 +18,7 @@ if __name__ == '__main__':
     c3d = C3D(num_classes=2)
 
     # print(f"\nc3d.train_c3d() = {c3d.train_c3d(1)}")
-    c3d.load_checkpoint("checkpoints/C3D_at_epoch39.pth")
+    c3d.load_checkpoint("checkpoints/augmented/C3D_at_epoch39.pth")
 
     preds = []
     labels_list = []

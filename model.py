@@ -9,7 +9,7 @@ import numpy as np
 import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as f
-from functions import dataloader, dataloader_test
+from functions import dataloader, dataloader_test, dataloader_augment
 from sklearn.metrics import confusion_matrix, accuracy_score, precision_score, recall_score, f1_score
 from skimage.metrics import structural_similarity as ssim
 
@@ -103,7 +103,7 @@ class C3D(nn.Module):
         super(C3D, self).__init__()
         self.optimizer = None
         self.epoch = 0
-        self.checkpoint_path = 'checkpoints/'
+        self.checkpoint_path = 'checkpoints/augmented'
         """ Ultrasound Video Classification """
 
         # First three convolutional layers
@@ -314,8 +314,8 @@ class C3D(nn.Module):
             # TODO: plots
             running_loss = 0.0
             average_loss = 0.0
-            trainloader = dataloader()
-            max_iter = len(list(dataloader()))
+            trainloader = dataloader_augment()
+            max_iter = len(list(dataloader_augment()))
             print(f"max_iter={max_iter}")
 
             # Loop over data

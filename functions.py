@@ -5,8 +5,10 @@ functions.py : contains functions to support training and testing the model
 """
 import cv2
 import torch
+import random
 import numpy as np
 from os import listdir
+import scipy.ndimage as ndimage
 
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -163,6 +165,125 @@ def return_video_fns_dict(sanity_check=False):
     return video_fns_dict
 
 
+def data_augment(data_):
+    """ Randomly apply one of the augmentation techniques to the 32 frames of ultrasound data_."""
+    # Randomly select an augmentation method
+    augment_methods = [random_flip_3d, random_rotation_3d, random_intensity_shift]
+    augment_method = random.choice(augment_methods)
+
+    data_augmented = None
+    # Apply selected augmentation method
+    if augment_method == random_flip_3d:
+        data_augmented = augment_method(data_)
+    elif augment_method == random_rotation_3d:
+        max_angle = 20  # You can adjust this parameter
+        data_augmented = augment_method(data_, max_angle)
+    elif augment_method == random_intensity_shift:
+        max_offset = 0.1  # You can adjust this parameter
+        max_scale_delta = 0.2  # You can adjust this parameter
+        data_augmented = augment_method(data_, max_offset, max_scale_delta)
+
+    return data_augmented
+
+
+def random_flip_3d(volume):
+    """
+    Randomly flip volume across different dimensions. Volume input should be in
+    format (frames, width, height, channels)
+    """
+    if random.choice([True, False]):
+        volume = volume[::-1, :, :, :]  # flip along frames
+    if random.choice([True, False]):
+        volume = volume[:, ::-1, :, :]  # flip along width
+    if random.choice([True, False]):
+        volume = volume[:, :, ::-1, :]  # flip along height
+
+    return volume
+
+
+def random_rotation_3d(volume, max_angle):
+    """
+    Randomly rotate volume along frames dimension. Volume input should be in
+    format (frames, width, height, channels)
+    """
+    angle = random.uniform(-max_angle, max_angle)
+    volume_rot = np.empty(volume.shape, dtype=np.float32)
+
+    # Apply rotation to each frame
+    for i in range(volume.shape[0]):
+        for j in range(volume.shape[3]):
+            volume_rot[i, :, :, j] = ndimage.rotate(volume[i, :, :, j], angle, axes=(0, 1), reshape=False)
+
+    return volume_rot
+
+
+def random_intensity_shift(volume, max_offset, max_scale_delta):
+    """
+    Randomly shift intensity of volume. Volume input should be in
+    format (frames, width, height, channels)
+    """
+    offset = random.uniform(-max_offset, max_offset)
+    scale = random.uniform(1 - max_scale_delta, 1 + max_scale_delta)
+
+    volume = volume.astype('float64')  # Convert volume to float64
+    volume += offset
+    volume *= scale
+
+    return volume
+
+
+def dataloader_augment():
+    """
+    Organise data for the training pipeline.
+    :yield: input (1, 32, 112, 112, 3), labels [1.0, 0.0]
+    """
+    # Load image and video dictionaries
+    image_dict = return_image_fns_dict()
+    video_dict = return_video_fns_dict()
+
+    print(f"image_dict.keys() = {list(image_dict.keys())}")
+
+    test_set_numbers = [25, 26, 27, 28, 29, 30, 31, 32, 33, 34]
+    all_numbers = [x for x in range(50)]
+    for number in all_numbers:
+        if number in test_set_numbers:
+            try:
+                del image_dict[str(number)]
+            except KeyError as e:
+                pass
+
+    # Get a list of keys and shuffle them
+    keys = list(image_dict.keys())
+    random.shuffle(keys)
+
+    print(f"image_dict.keys() = {list(image_dict.keys())}")
+
+    for key in keys:
+        item = image_dict[key]
+        # item = {'image_no': '0', 'video_no': '1', ..., 'temporal_index': '94', 'video_filename': '1_r_t_b.avi'}
+        video_name = '_'.join(list(video_dict[item["video_no"]].values())) + '.avi'
+        video_data = unpack_video(f'data/data/videos/{video_name}')
+        data = get_continuous_frames(video_data, frame_index=int(item["temporal_index"]))
+        # Calculate labels, b = benign, m = malignant, [b, m] -> if b : [1, 0] ? [0, 1]
+        labels = [0.0, 0.0]
+        if item["y_actual"] == 'b':
+            labels[0] = 1.0
+        else:
+            labels[1] = 1.0
+        labels = torch.tensor(labels)
+
+        # Apply random modifications and iterate over the same 32 frames 5 times
+        for _ in range(5):
+            modified_data = data_augment(data)
+            modified_data = np.expand_dims(modified_data, axis=0)
+            modified_data = np.transpose(modified_data, (0, 4, 1, 2, 3))
+            # Pass C3D input and labels
+            # Normalize data to be between 0 and 1
+            modified_data = (modified_data - np.min(modified_data)) / (np.max(modified_data) - np.min(modified_data))
+            modified_data = torch.from_numpy(modified_data.copy()).float()
+            yield modified_data, labels
+
+
 def dataloader():
     """
     Organise data for the training pipeline.
@@ -172,6 +293,15 @@ def dataloader():
     image_dict = return_image_fns_dict()
     video_dict = return_video_fns_dict()
     prefix = "data/data"
+
+    test_set_numbers = [25, 26, 27, 28, 29, 30, 31, 32, 33, 34]
+    all_numbers = [x for x in range(50)]
+    for number in all_numbers:
+        if number in test_set_numbers:
+            try:
+                del image_dict[str(number)]
+            except KeyError as e:
+                pass
 
     # for item in list(image_dict.values())[:1]:
     #     print(video_dict[item["video_no"]])
