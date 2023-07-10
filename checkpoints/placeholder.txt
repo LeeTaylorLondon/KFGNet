@@ -1,0 +1,1 @@
+This folder will populate with C3D model states for each epoch, from which you can load from.

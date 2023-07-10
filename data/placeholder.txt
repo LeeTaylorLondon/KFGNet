@@ -1,0 +1,12 @@
+Download the below data:
+
+Baidu Netdisk link of ultrasonic data : https://pan.baidu.com/s/1_9PRDvjaJbpZfcLL1XA5OA
+Code : wuj2
+
+Place the 'data' folder in this folder, such that the project contains:
+/checkpoints -> [placeholder.txt]
+/data        -> [data -> [images, videos, avi.xlsx, README.md], placeholder.txt]
+/deprecated  -> ...
+/images      -> ...
+...
+train.py
