@@ -6,13 +6,13 @@ import os
 import cv2
 import torch
 import numpy as np
+import torch
 import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as f
 from functions import dataloader, dataloader_test, dataloader_augment
 from sklearn.metrics import confusion_matrix, accuracy_score, precision_score, recall_score, f1_score
 from skimage.metrics import structural_similarity as ssim
-
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
@@ -46,12 +46,12 @@ def compute_motion_index(video):
     :param video:
     :return:
     """
-    T, H, W, C = video.shape        # temporal index, height, width, channels
-    motion_index = np.zeros((T,))   # init. motion index of zeros
+    T, H, W, C = video.shape  # temporal index, height, width, channels
+    motion_index = np.zeros((T,))  # init. motion index of zeros
     # Nested for loop acts as a moving window for each frame Mi
     for i in range(T):
         frame_similarities = []
-        for j in [i-2, i-1, i+1, i+2]:
+        for j in [i - 2, i - 1, i + 1, i + 2]:
             if 0 <= j < T:
                 # Calculate SSIM
                 ssim_value = ssim(video[i], video[j], multichannel=True,
@@ -65,6 +65,16 @@ def compute_motion_index(video):
         # print(motion_index[i].shape)
 
     return motion_index
+
+
+def motion_index_summary(motion_index):
+    # Divide the motion index into 8 segments and take the average of each
+    num_segments = 8
+    segment_size = T // num_segments
+    motion_index = motion_index.reshape(num_segments, segment_size)
+    motion_index_summary = motion_index.mean(axis=1)
+
+    return motion_index_summary
 
 
 class SPP(nn.Module):
@@ -294,167 +304,163 @@ class C3D(nn.Module):
         "the feature map is reduced to 1 channel. The final output feature map
         size is 1×T×1×1, which could be used as temporal weights."
 
-        "loss...
+        The equation they provide is Cross Entropy Loss, from the diagram
+        we are predicting two classes therefore use nn.CrossEntropyLoss().
+        "we use Adam optimizer with the learning rate of 1e-3 and weight decay of 1e-8"
         """
-        # The equation they provide is Cross Entropy Loss, from the diagram
-        # we are predicting two classes therefore use nn.CrossEntropyLoss().
+        # Set loss, optimizer, train state to True
         classification_criterion = nn.CrossEntropyLoss()
-        # "we use Adam optimizer with the learning rate of 1e-3 and ...
-        # weight decay of 1e-8"
         self.optimizer = optim.Adam(self.parameters(), lr=1e-3, weight_decay=1e-8)
-        self.train()  # Set training mode to True
+        self.train()
+        trainloader = torch.utils.data.DataLoader(list(dataloader_augment()), batch_size=64, shuffle=True)
 
         # Train loop
         num_epochs = epochs  # 40
-        for self.epoch in range(num_epochs):
-            # "after 40 epochs we change the LR to 1e-4"
-            if self.epoch > 20:
-                self.optimizer = optim.Adam(self.parameters(),
-                                       lr=1e-4, weight_decay=1e-8)
-            # TODO: plots
-            running_loss = 0.0
-            average_loss = 0.0
-            trainloader = dataloader_augment()
-            max_iter = len(list(dataloader_augment()))
-            print(f"max_iter={max_iter}")
+        with torch.set_grad_enabled(True):
+            for self.epoch in range(num_epochs):
 
-            # Loop over data
-            for i, data in enumerate(trainloader):
-                # Unpack data
-                inputs, labels = data  # 32 frames, y_true
-                # >>> labels = tensor([1., 0.])
-                # >>> labels.shape = torch.Size([2])
+                # Decrease LR and Batch Size "after 40 epochs we change the LR to 1e-4"
+                if self.epoch > 20:
+                    self.optimizer = optim.Adam(
+                        self.parameters(),
+                        lr=1e-4, weight_decay=1e-8
+                    )
+                    trainloader = torch.utils.data.DataLoader(
+                        list(dataloader_augment()),
+                        batch_size=16,
+                        shuffle=True
+                    )
 
-                self.optimizer.zero_grad()  # zero the parameter gradients
+                # Track loss variables during training
+                running_loss, average_loss = 0.0, 0.0
+                max_iter = len(list(dataloader_augment()))
 
-                outputs, vtemp = self(inputs)  # prediction, temporal weights
-                # >>> outputs.shape = torch.Size([1, 2])
-                # >>> outputs = tensor([[ 4.7026, -8.8772]], grad_fn=<AddmmBackward0>)
+                # Training Loop
+                for i, data in enumerate(trainloader):
+                    # Unpack data >>> labels, labels.shape = tensor([1., 0.]), torch.Size([2])
+                    inputs, labels = data
+                    labels = torch.argmax(labels, dim=1)
 
-                # Calculate Vmotion from inputs rearrange
-                # dimensions and convert to numpy array
-                inputs_np = inputs.permute(0, 2, 3, 4, 1).numpy()
-                vmotion_list = []
-                for video in inputs_np:
+                    # Predictions, temporal weights, reshape output
+                    outputs, vtemp = self(inputs)
+                    outputs = outputs.view(-1, 2)  # reshape to [batch_size, num_classes]
+
+                    # Calculate Vmotion from inputs rearrange dimensions and convert to numpy array
+                    inputs_np = inputs.permute(0, 2, 3, 4, 1).numpy()
+                    vmotion_list = []
                     # calculate vmotion for each video
-                    vmotion_video = compute_motion_index(video)
-                    vmotion_list.append(vmotion_video)
-                # convert back to tensor
-                vmotion = torch.tensor(vmotion_list, dtype=torch.float32).to(device)
+                    for video in inputs_np:
+                        vmotion_video = compute_motion_index(video)
+                        vmotion_list.append(vmotion_video)
+                    vmotion = torch.tensor(vmotion_list, dtype=torch.float32).to(device)
 
-                # Change vmotion size for COSINE calculation
-                # >>> vmotion.shape = torch.Size([1, 32])
-                vmotion = vmotion.view(-1, 8)
-                # >>> vmotion.shape = torch.Size([1, 8])
+                    # Divide the motion index into 8 segments and take the average of each
+                    # Change vmotion size for COSINE calculation
+                    num_segments = 8
+                    segment_size = vmotion.shape[1] // num_segments  # 32 // 8 = 4
+                    vmotion = vmotion.view(
+                        -1, num_segments, segment_size
+                    )  # reshape to [batch_size, num_segments, segment_size]
+                    vmotion = vmotion.mean(dim=2)
+                    # vmotion.shape = ([batchsize, 32]) -> ([batchsize, 8])
 
-                # Calc. LOSS, classification & vtemp
-                loss_cls = classification_criterion(outputs[0], labels)
-                loss_motion = self._l_motion(vtemp, vmotion)
-                # >>> vtemp.shape = [1, 8], vmotion.shape = [4, 8]
-                # >>> _l_motion = tensor([0.0039, 0.0023, 0.0024, 0.0030], grad_fn=<RsubBackward1>)
+                    # Calculate LOSS, classification & vtemp
+                    loss_cls = classification_criterion(outputs, labels)
+                    loss_motion = self._l_motion(vtemp, vmotion)
+                    # >>> vtemp.shape = [1, 8], vmotion.shape = [4, 8]
+                    # >>> _l_motion = tensor([0.0039, 0.0023, 0.0024, 0.0030], grad_fn=<RsubBackward1>)
 
-                # Total Loss
-                loss = loss_cls + loss_motion
+                    # Calcualte and Average the loss
+                    loss = loss_cls + loss_motion
+                    loss = loss.mean()
+                    y_pred = f.softmax(outputs, dim=0).detach().numpy()
 
-                # # Average the loss
-                # loss = loss.mean()  # Todo: Average or sum loss?
-                # print(f"loss.mean() = {loss}, "
-                #       f"y_pred = {f.softmax(outputs[0], dim=0).detach().numpy()}, "
-                #       f"y_actual = {labels}")
+                    # Out single batch updates
+                    print(
+                        f"loss.mean() = {round(float(loss), 5)}, "
+                        f"y_pred = {y_pred}, "
+                        f"y_actual = {labels}, "
+                    )
 
-                # Average the loss
-                loss = loss.sum()  # Todo: Average or sum loss?
-                y_pred = f.softmax(outputs[0], dim=0).detach().numpy()
+                    # Back propagation AND Optimize weights
+                    loss.backward()
+                    self.optimizer.step()
 
-                ...
+                    # Sum loss
+                    running_loss += loss
+                    average_loss = running_loss / max_iter
 
-                print(f"loss.sum() = {round(float(loss), 5)},       "
-                      f"y_pred = {round(float(y_pred[0]), 5)} {round(float(y_pred[1]), 5)},     "
-                      f"y_actual = {labels}")
+                # End of epoch
+                print(f"Epoch: {self.epoch}, Total Loss: {running_loss}, Avg Loss: {average_loss}")
+                self.save_checkpoint()
 
-                """
-                loss.sum() = 6.183663368225098, y_pred = [0.4722479 0.5277521], y_actual = tensor([1., 0.])
-                loss.sum() = 0.004501700401306152, y_pred = [1.0000000e+00 3.3208177e-14], y_actual = tensor([1., 0.])
-                loss.sum() = 0.007243692874908447, y_pred = [1.000000e+00 9.129069e-23], y_actual = tensor([1., 0.])
-                """
-
-                # back propagation, optimize weights
-                loss.backward()
-                self.optimizer.step()
-
-                # Sum loss
-                running_loss += loss
-                average_loss = running_loss / max_iter
-
-            # End of epoch
-            print(f"Epoch: {self.epoch}, Total Loss: {running_loss}, Avg Loss: {average_loss}")
-            self.save_checkpoint()
-
+        # End of Training loop
         print('Finished Training')
+
         return
 
 
 if __name__ == '__main__':
-    # Init. lightweight C3D model
-    c3d = C3D(num_classes=2)
-
-    # Set model.training to True
-    # c3d.train()
-    # print(f"c3d.training = {c3d.training}")
-    # >>> True
-
-    # print(f"\nc3d.train_c3d() = {c3d.train_c3d(1)}")
-    c3d.load_checkpoint("checkpoints/C3D_at_epoch39.pth")
-
-    preds = []
-    labels_list = []
-
-    # outputs, vtemp = self(inputs)  # prediction, temporal weights6
-    for i, data in enumerate(dataloader_test()):
-        # model input-output
-        inputs, labels = data
-        outputs, vtemp = c3d(inputs)
-
-        outputs_vals = f.softmax(outputs[0], dim=0).detach().numpy()
-        outputs_vals_rounded = [round(outputs_vals[0]), round(outputs_vals[1])]
-        print(f"outputs = {outputs_vals_rounded}, labels = {labels}")
-
-        # outputs_vals_binary = np.argmax(outputs_vals)
-        if outputs_vals_rounded == [round(int(labels[0])), round(int(labels[1]))]:
-            preds.append(1)
-        else:
-            preds.append(0)
-
-        # Save predictions and labels for evaluation
-        # preds.append(round(outputs_vals[1]))
-        labels_list.append(np.argmax(labels.numpy()))
-
-    print("Finished Predicting")
-    print()
-
-    # Convert lists to numpy arrays
-    y_pred = np.array([1, 0, 1, 1, 1, 1, 1, 1, 1, 1])
-    y_test_single_label = np.array([1, 1, 1, 1, 1, 0, 0, 0, 0, 0])
-
-    # Debug output
-    print(f"y_test_single_label = {y_test_single_label}")
-    print(f"y_pred = {y_pred}")
-
-    # Create a confusion matrix
-    tn, fp, fn, tp = confusion_matrix(y_test_single_label, y_pred).ravel()
-
-    # Compute metrics
-    accuracy = accuracy_score(y_test_single_label, y_pred)
-    sensitivity = recall_score(y_test_single_label, y_pred)  # Sensitivity is the same as Recall
-    specificity = tn / (tn+fp)
-    precision = precision_score(y_test_single_label, y_pred)
-    f1 = f1_score(y_test_single_label, y_pred)
-
-    print(f"Accuracy: {accuracy}")
-    print(f"Sensitivity: {sensitivity}")
-    print(f"Specificity: {specificity}")
-    print(f"Precision: {precision}")
-    print(f"F1-score: {f1}")
+    # # Init. lightweight C3D model
+    # c3d = C3D(num_classes=2)
+    #
+    # # Set model.training to True
+    # # c3d.train()
+    # # print(f"c3d.training = {c3d.training}")
+    # # >>> True
+    #
+    # # print(f"\nc3d.train_c3d() = {c3d.train_c3d(1)}")
+    # c3d.load_checkpoint("checkpoints/C3D_at_epoch39.pth")
+    #
+    # preds = []
+    # labels_list = []
+    #
+    # # outputs, vtemp = self(inputs)  # prediction, temporal weights6
+    # for i, data in enumerate(dataloader_test()):
+    #     # model input-output
+    #     inputs, labels = data
+    #     outputs, vtemp = c3d(inputs)
+    #
+    #     outputs_vals = f.softmax(outputs[0], dim=0).detach().numpy()
+    #     outputs_vals_rounded = [round(outputs_vals[0]), round(outputs_vals[1])]
+    #     print(f"outputs = {outputs_vals_rounded}, labels = {labels}")
+    #
+    #     # outputs_vals_binary = np.argmax(outputs_vals)
+    #     if outputs_vals_rounded == [round(int(labels[0])), round(int(labels[1]))]:
+    #         preds.append(1)
+    #     else:
+    #         preds.append(0)
+    #
+    #     # Save predictions and labels for evaluation
+    #     # preds.append(round(outputs_vals[1]))
+    #     labels_list.append(np.argmax(labels.numpy()))
+    #
+    # print("Finished Predicting")
+    # print()
+    #
+    # # Convert lists to numpy arrays
+    # y_pred = np.array([1, 0, 1, 1, 1, 1, 1, 1, 1, 1])
+    # y_test_single_label = np.array([1, 1, 1, 1, 1, 0, 0, 0, 0, 0])
+    #
+    # # Debug output
+    # print(f"y_test_single_label = {y_test_single_label}")
+    # print(f"y_pred = {y_pred}")
+    #
+    # # Create a confusion matrix
+    # tn, fp, fn, tp = confusion_matrix(y_test_single_label, y_pred).ravel()
+    #
+    # # Compute metrics
+    # accuracy = accuracy_score(y_test_single_label, y_pred)
+    # sensitivity = recall_score(y_test_single_label, y_pred)  # Sensitivity is the same as Recall
+    # specificity = tn / (tn+fp)
+    # precision = precision_score(y_test_single_label, y_pred)
+    # f1 = f1_score(y_test_single_label, y_pred)
+    #
+    # print(f"Accuracy: {accuracy}")
+    # print(f"Sensitivity: {sensitivity}")
+    # print(f"Specificity: {specificity}")
+    # print(f"Precision: {precision}")
+    # print(f"F1-score: {f1}")
 
     # Mark EOF
     pass

@@ -281,8 +281,9 @@ def dataloader_augment():
         # Apply random modifications and iterate over the same 32 frames 5 times
         for _ in range(iters_):
             modified_data = data_augment(data)
-            modified_data = np.expand_dims(modified_data, axis=0)
-            modified_data = np.transpose(modified_data, (0, 4, 1, 2, 3))
+            # modified_data = np.expand_dims(modified_data, axis=0)
+            # modified_data = np.transpose(modified_data, (0, 4, 1, 2, 3))
+            modified_data = np.transpose(modified_data, (3, 0, 1, 2))
             # Pass C3D input and labels
             # Normalize data to be between 0 and 1
             modified_data = (modified_data - np.min(modified_data)) / (np.max(modified_data) - np.min(modified_data))

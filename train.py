@@ -14,12 +14,12 @@ if __name__ == '__main__':
     # dataloader()
     # quit()
 
-    print(f"torch.device = {torch.device}")
+    print(f"device (used) = {device}")
 
     # Init. model
     s2m = stage2model = C3D(num_classes=2)
 
-    s2m.checkpoint_path = "checkpoints/augmented_normalized_ratiosampling_loss-sum/"
+    s2m.checkpoint_path = "checkpoints/augmented_normalized_ratiosampling_batchsize64/"
 
     # Feed video data into lwC3D for training
     s2m.train_c3d()
