@@ -14,6 +14,7 @@ from functions import dataloader, dataloader_test, dataloader_augment
 from sklearn.metrics import confusion_matrix, accuracy_score, precision_score, recall_score, f1_score
 from skimage.metrics import structural_similarity as ssim
 
+
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 
@@ -65,16 +66,6 @@ def compute_motion_index(video):
         # print(motion_index[i].shape)
 
     return motion_index
-
-
-def motion_index_summary(motion_index):
-    # Divide the motion index into 8 segments and take the average of each
-    num_segments = 8
-    segment_size = T // num_segments
-    motion_index = motion_index.reshape(num_segments, segment_size)
-    motion_index_summary = motion_index.mean(axis=1)
-
-    return motion_index_summary
 
 
 class SPP(nn.Module):
@@ -312,7 +303,7 @@ class C3D(nn.Module):
         classification_criterion = nn.CrossEntropyLoss()
         self.optimizer = optim.Adam(self.parameters(), lr=1e-3, weight_decay=1e-8)
         self.train()
-        trainloader = torch.utils.data.DataLoader(list(dataloader_augment()), batch_size=64, shuffle=True)
+        trainloader = torch.utils.data.DataLoader(list(dataloader_augment()), batch_size=16, shuffle=True)
 
         # Train loop
         num_epochs = epochs  # 40
@@ -401,66 +392,5 @@ class C3D(nn.Module):
 
 
 if __name__ == '__main__':
-    # # Init. lightweight C3D model
-    # c3d = C3D(num_classes=2)
-    #
-    # # Set model.training to True
-    # # c3d.train()
-    # # print(f"c3d.training = {c3d.training}")
-    # # >>> True
-    #
-    # # print(f"\nc3d.train_c3d() = {c3d.train_c3d(1)}")
-    # c3d.load_checkpoint("checkpoints/C3D_at_epoch39.pth")
-    #
-    # preds = []
-    # labels_list = []
-    #
-    # # outputs, vtemp = self(inputs)  # prediction, temporal weights6
-    # for i, data in enumerate(dataloader_test()):
-    #     # model input-output
-    #     inputs, labels = data
-    #     outputs, vtemp = c3d(inputs)
-    #
-    #     outputs_vals = f.softmax(outputs[0], dim=0).detach().numpy()
-    #     outputs_vals_rounded = [round(outputs_vals[0]), round(outputs_vals[1])]
-    #     print(f"outputs = {outputs_vals_rounded}, labels = {labels}")
-    #
-    #     # outputs_vals_binary = np.argmax(outputs_vals)
-    #     if outputs_vals_rounded == [round(int(labels[0])), round(int(labels[1]))]:
-    #         preds.append(1)
-    #     else:
-    #         preds.append(0)
-    #
-    #     # Save predictions and labels for evaluation
-    #     # preds.append(round(outputs_vals[1]))
-    #     labels_list.append(np.argmax(labels.numpy()))
-    #
-    # print("Finished Predicting")
-    # print()
-    #
-    # # Convert lists to numpy arrays
-    # y_pred = np.array([1, 0, 1, 1, 1, 1, 1, 1, 1, 1])
-    # y_test_single_label = np.array([1, 1, 1, 1, 1, 0, 0, 0, 0, 0])
-    #
-    # # Debug output
-    # print(f"y_test_single_label = {y_test_single_label}")
-    # print(f"y_pred = {y_pred}")
-    #
-    # # Create a confusion matrix
-    # tn, fp, fn, tp = confusion_matrix(y_test_single_label, y_pred).ravel()
-    #
-    # # Compute metrics
-    # accuracy = accuracy_score(y_test_single_label, y_pred)
-    # sensitivity = recall_score(y_test_single_label, y_pred)  # Sensitivity is the same as Recall
-    # specificity = tn / (tn+fp)
-    # precision = precision_score(y_test_single_label, y_pred)
-    # f1 = f1_score(y_test_single_label, y_pred)
-    #
-    # print(f"Accuracy: {accuracy}")
-    # print(f"Sensitivity: {sensitivity}")
-    # print(f"Specificity: {specificity}")
-    # print(f"Precision: {precision}")
-    # print(f"F1-score: {f1}")
-
     # Mark EOF
     pass
