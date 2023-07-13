@@ -10,12 +10,6 @@ device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 
 if __name__ == '__main__':
-    # # Test dataloader
-    # dataloader()
-    # quit()
-
-    print(f"device (used) = {device}")
-
     # Init. model
     s2m = stage2model = C3D(num_classes=2)
 

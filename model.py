@@ -10,7 +10,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as f
-from functions import dataloader, dataloader_test, dataloader_augment
+from functions import dataloader, dataloader_test, dataloader_augment, MyDataset
 from sklearn.metrics import confusion_matrix, accuracy_score, precision_score, recall_score, f1_score
 from skimage.metrics import structural_similarity as ssim
 
@@ -303,7 +303,8 @@ class C3D(nn.Module):
         classification_criterion = nn.CrossEntropyLoss()
         self.optimizer = optim.Adam(self.parameters(), lr=1e-3, weight_decay=1e-8)
         self.train()
-        trainloader = torch.utils.data.DataLoader(list(dataloader_augment()), batch_size=16, shuffle=True)
+        dataset = MyDataset(dataloader_augment)
+        trainloader = torch.utils.data.DataLoader(dataset, batch_size=64)
 
         # Train loop
         num_epochs = epochs  # 40

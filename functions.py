@@ -233,6 +233,66 @@ def random_intensity_shift(volume, max_offset, max_scale_delta):
     return volume
 
 
+class MyDataset(torch.utils.data.IterableDataset):
+    """
+    Yield data for training purposes.
+    """
+    def __init__(self, generator_function):
+        super(MyDataset).__init__()
+        self.generator_function = generator_function
+
+    def __iter__(self):
+        return self.generator_function()
+
+
+def dataloader_test():
+    """
+    Organise data for the training pipeline.
+    :yield: input (1, 32, 112, 112, 3), labels [1.0, 0.0]
+    """
+    # Load image and video dictionaries
+    image_dict = return_image_fns_dict()
+    video_dict = return_video_fns_dict()
+
+    test_set_numbers = [25, 26, 27, 28, 29, 30, 31, 32, 33, 34]
+    all_numbers = [x for x in range(50)]
+    for number in all_numbers:
+        if number not in test_set_numbers:
+            try:
+                del image_dict[str(number)]
+            except KeyError as e:
+                pass
+
+    print(f"image_dict.keys() = {list(image_dict.keys())}")
+
+    # for item in list(image_dict.values())[:1]:
+    #     print(video_dict[item["video_no"]])
+    #     print('_'.join(list(video_dict[item["video_no"]].values())) + '.avi')
+    """ 
+    Write a function using an image filename to get the corresponding video
+    and unpack the 32 frames using the key frame from the image filename dictionary.
+
+    image_number, image_key_frame_index -> video_number -> 32_frames
+    """
+    for item in image_dict.values():
+        # item = {'image_no': '0', 'video_no': '1', ..., 'temporal_index': '94', 'video_filename': '1_r_t_b.avi'}
+        video_name = '_'.join(list(video_dict[item["video_no"]].values())) + '.avi'
+        video_data = unpack_video(f'data/data/videos/{video_name}')
+        data = get_continuous_frames(video_data, frame_index=int(item["temporal_index"]))
+        data = np.expand_dims(data, axis=0)
+        data = np.transpose(data, (0, 4, 1, 2, 3))
+        # Calculate labels, b = benign, m = malignant, [b, m] -> if b : [1, 0] ? [0, 1]
+        labels = [0.0, 0.0]
+        if item["y_actual"] == 'b':
+            labels[0] = 1.0
+        else:
+            labels[1] = 1.0
+        labels = torch.tensor(labels)
+        # Pass C3D input and labels
+        data = torch.from_numpy(data).float()
+        yield data, labels
+
+
 def dataloader_augment():
     """
     Organise data for the training pipeline.
@@ -289,159 +349,6 @@ def dataloader_augment():
             modified_data = (modified_data - np.min(modified_data)) / (np.max(modified_data) - np.min(modified_data))
             modified_data = torch.from_numpy(modified_data.copy()).float()
             yield modified_data, labels
-
-
-def dataloader():
-    """
-    Organise data for the training pipeline.
-    :yield: input (1, 32, 112, 112, 3), labels [1.0, 0.0]
-    """
-    # Load image and video dictionaries
-    image_dict = return_image_fns_dict()
-    video_dict = return_video_fns_dict()
-    prefix = "data/data"
-
-    test_set_numbers = [25, 26, 27, 28, 29, 30, 31, 32, 33, 34]
-    all_numbers = [x for x in range(50)]
-    for number in all_numbers:
-        if number in test_set_numbers:
-            try:
-                del image_dict[str(number)]
-            except KeyError as e:
-                pass
-
-    # for item in list(image_dict.values())[:1]:
-    #     print(video_dict[item["video_no"]])
-    #     print('_'.join(list(video_dict[item["video_no"]].values())) + '.avi')
-    """ 
-    Write a function using an image filename to get the corresponding video
-    and unpack the 32 frames using the key frame from the image filename dictionary.
-
-    image_number, image_key_frame_index -> video_number -> 32_frames
-    """
-    for item in image_dict.values():
-        # item = {'image_no': '0', 'video_no': '1', ..., 'temporal_index': '94', 'video_filename': '1_r_t_b.avi'}
-        video_name = '_'.join(list(video_dict[item["video_no"]].values())) + '.avi'
-        video_data = unpack_video(f'data/data/videos/{video_name}')
-        if video_data is None:
-            video_data = unpack_video(f'../data/data/videos/{video_name}')
-        data = get_continuous_frames(video_data, frame_index=int(item["temporal_index"]))
-        data = np.expand_dims(data, axis=0)
-        data = np.transpose(data, (0, 4, 1, 2, 3))
-        # Calculate labels, b = benign, m = malignant, [b, m] -> if b : [1, 0] ? [0, 1]
-        labels = [0.0, 0.0]
-        if item["y_actual"] == 'b':
-            labels[0] = 1.0
-        else:
-            labels[1] = 1.0
-        labels = torch.tensor(labels)
-        # Pass C3D input and labels
-        data = torch.from_numpy(data).float()
-        yield data, labels
-
-
-def dataloader_augment_alternate():
-    """
-    write here
-    """
-    # Load image and video dictionaries
-    image_dict = return_image_fns_dict()
-    video_dict = return_video_fns_dict()
-
-    # Create two queues, one for each class
-    queue_0 = deque()
-    queue_1 = deque()
-
-    for key in keys:
-        item = image_dict[key]
-        video_name = '_'.join(list(video_dict[item["video_no"]].values())) + '.avi'
-        video_data = unpack_video(f'data/data/videos/{video_name}')
-        data = get_continuous_frames(video_data, frame_index=int(item["temporal_index"]))
-        labels = [0.0, 0.0]
-        if item["y_actual"] == 'b':
-            labels[0] = 1.0
-        else:
-            labels[1] = 1.0
-        labels = torch.tensor(labels)
-
-        # Depending on the label, append the data and labels to the appropriate queue
-        if labels[0] == 1.0:
-            queue_1.append((data, labels))
-        else:
-            queue_0.append((data, labels))
-
-    # Now, alternate between the two queues, yielding one item at a time
-    while queue_0 and queue_1:
-        for _ in range(5):  # Adjust this value as needed
-            if queue_1:
-                data, labels = queue_1.popleft()
-                modified_data = data_augment(data)
-                modified_data = np.expand_dims(modified_data, axis=0)
-                modified_data = np.transpose(modified_data, (0, 4, 1, 2, 3))
-                modified_data = (modified_data - np.min(modified_data)) / (
-                            np.max(modified_data) - np.min(modified_data))
-                modified_data = torch.from_numpy(modified_data.copy()).float()
-                yield modified_data, labels
-
-        for _ in range(9):  # Adjust this value as needed
-            if queue_0:
-                data, labels = queue_0.popleft()
-                modified_data = data_augment(data)
-                modified_data = np.expand_dims(modified_data, axis=0)
-                modified_data = np.transpose(modified_data, (0, 4, 1, 2, 3))
-                modified_data = (modified_data - np.min(modified_data)) / (
-                            np.max(modified_data) - np.min(modified_data))
-                modified_data = torch.from_numpy(modified_data.copy()).float()
-                yield modified_data, labels
-    ...
-
-
-def dataloader_test():
-    """
-    Organise data for the training pipeline.
-    :yield: input (1, 32, 112, 112, 3), labels [1.0, 0.0]
-    """
-    # Load image and video dictionaries
-    image_dict = return_image_fns_dict()
-    video_dict = return_video_fns_dict()
-
-    test_set_numbers = [25, 26, 27, 28, 29, 30, 31, 32, 33, 34]
-    all_numbers = [x for x in range(50)]
-    for number in all_numbers:
-        if number not in test_set_numbers:
-            try:
-                del image_dict[str(number)]
-            except KeyError as e:
-                pass
-
-    print(f"image_dict.keys() = {list(image_dict.keys())}")
-
-    # for item in list(image_dict.values())[:1]:
-    #     print(video_dict[item["video_no"]])
-    #     print('_'.join(list(video_dict[item["video_no"]].values())) + '.avi')
-    """ 
-    Write a function using an image filename to get the corresponding video
-    and unpack the 32 frames using the key frame from the image filename dictionary.
-
-    image_number, image_key_frame_index -> video_number -> 32_frames
-    """
-    for item in image_dict.values():
-        # item = {'image_no': '0', 'video_no': '1', ..., 'temporal_index': '94', 'video_filename': '1_r_t_b.avi'}
-        video_name = '_'.join(list(video_dict[item["video_no"]].values())) + '.avi'
-        video_data = unpack_video(f'data/data/videos/{video_name}')
-        data = get_continuous_frames(video_data, frame_index=int(item["temporal_index"]))
-        data = np.expand_dims(data, axis=0)
-        data = np.transpose(data, (0, 4, 1, 2, 3))
-        # Calculate labels, b = benign, m = malignant, [b, m] -> if b : [1, 0] ? [0, 1]
-        labels = [0.0, 0.0]
-        if item["y_actual"] == 'b':
-            labels[0] = 1.0
-        else:
-            labels[1] = 1.0
-        labels = torch.tensor(labels)
-        # Pass C3D input and labels
-        data = torch.from_numpy(data).float()
-        yield data, labels
 
 
 if __name__ == '__main__':
