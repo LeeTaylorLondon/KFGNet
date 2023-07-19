@@ -4,14 +4,12 @@ Modified by: Lee Taylor
 """
 import os
 import cv2
-import torch
 import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as f
-from functions import dataloader, dataloader_test, dataloader_augment, MyDataset
-from sklearn.metrics import confusion_matrix, accuracy_score, precision_score, recall_score, f1_score
+from functions import dataloader_augment, MyDataset
 from skimage.metrics import structural_similarity as ssim
 
 
@@ -301,10 +299,11 @@ class C3D(nn.Module):
         """
         # Set loss, optimizer, train state to True
         classification_criterion = nn.CrossEntropyLoss()
+        # classification_criterion = nn.BCEWithLogitsLoss()
         self.optimizer = optim.Adam(self.parameters(), lr=1e-3, weight_decay=1e-8)
         self.train()
         dataset = MyDataset(dataloader_augment)
-        trainloader = torch.utils.data.DataLoader(dataset, batch_size=64)
+        trainloader = torch.utils.data.DataLoader(dataset, batch_size=16)
 
         # Train loop
         num_epochs = epochs  # 40
@@ -313,19 +312,12 @@ class C3D(nn.Module):
 
                 # Decrease LR and Batch Size "after 40 epochs we change the LR to 1e-4"
                 if self.epoch > 20:
-                    self.optimizer = optim.Adam(
-                        self.parameters(),
-                        lr=1e-4, weight_decay=1e-8
-                    )
-                    trainloader = torch.utils.data.DataLoader(
-                        list(dataloader_augment()),
-                        batch_size=16,
-                        shuffle=True
-                    )
+                    for g in self.optimizer.param_groups:
+                        g['lr'] = 1e-4
 
                 # Track loss variables during training
                 running_loss, average_loss = 0.0, 0.0
-                max_iter = len(list(dataloader_augment()))
+                max_iter = len(trainloader)
 
                 # Training Loop
                 for i, data in enumerate(trainloader):
@@ -344,7 +336,7 @@ class C3D(nn.Module):
                     for video in inputs_np:
                         vmotion_video = compute_motion_index(video)
                         vmotion_list.append(vmotion_video)
-                    vmotion = torch.tensor(vmotion_list, dtype=torch.float32).to(device)
+                    vmotion = torch.tensor(vmotion_list, dtype=torch.float32)
 
                     # Divide the motion index into 8 segments and take the average of each
                     # Change vmotion size for COSINE calculation
@@ -375,8 +367,10 @@ class C3D(nn.Module):
                     )
 
                     # Back propagation AND Optimize weights
+                    self.optimizer.zero_grad()
                     loss.backward()
                     self.optimizer.step()
+                    self.optimizer.zero_grad()
 
                     # Sum loss
                     running_loss += loss

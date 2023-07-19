@@ -3,13 +3,16 @@ Author: Lee Taylor
 
 functions.py : contains functions to support training and testing the model
 """
+import os
 import cv2
 import torch
 import random
 import numpy as np
+import pandas as pd
 from os import listdir
 from collections import deque
 import scipy.ndimage as ndimage
+from itertools import zip_longest
 
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -76,7 +79,8 @@ def get_continuous_frames(video_data, frame_index=94, T=32):
     end_index = min(len(video_data), start_index + T)
     start_index = max(0, end_index - T)  # adjust start if end is beyond video length
 
-    sequence = video_data[start_index:end_index]
+    # print(f"DEBUG: start_index = {start_index}, end_index = {end_index}")
+    sequence = video_data[int(start_index):int(end_index)]
 
     return sequence
 
@@ -293,62 +297,142 @@ def dataloader_test():
         yield data, labels
 
 
+def video_names():
+    """
+    :return: list of video names
+    """
+    path = "data/data/videos"
+    return os.listdir(path)
+
+
+def get_video_names_dict():
+    """
+    Return a dictionary which contains key video number and video name.
+    """
+    rv = {}
+    names = video_names()
+    for i in range(50):
+        for name in names:
+            # if name.__contains__(str(i)):
+            if name.split('_')[0] == str(i):
+                rv.update({str(i): name})
+                continue
+    return rv
+
+
+def video_keyframe():
+    """
+    Yield video number, key frame number.
+    """
+    # Read data
+    file = "data/data/avi.xlsx"
+    df = pd.read_excel(file)
+    columns = df[['d', 'g', 'j', 'm']]
+
+    # Get the dictionary of video names {'0': '0_r_t_b.avi', ...}
+    video_names_dict = get_video_names_dict()
+
+    # Skip videos belonging to the test set
+    test_set_numbers = [25, 26, 27, 28, 29, 30, 31, 32, 33, 34]
+    for number in test_set_numbers:
+        try:
+            del video_names_dict[str(number)]
+        except KeyError:
+            pass
+
+    # Sort the video_keys into class 1 (malignant) and class 0 (benign)
+    class_1_keys = []
+    class_0_keys = []
+    for index, row in columns.iterrows():
+        if index in test_set_numbers:
+            continue
+        for item in row:
+            if not str(item) == 'nan':
+                video_name = video_names_dict.get(str(index), '')
+                if video_name.split('_')[-1][0] == 'b':
+                    class_0_keys.append((index, item))
+                elif video_name.split('_')[-1][0] == 'm':
+                    class_1_keys.append((index, item))
+
+    # Calculate the difference in lengths
+    length_diff = abs(len(class_0_keys) - len(class_1_keys))
+
+    for _ in range(length_diff):
+        random_var = random.randint(0, len(class_1_keys) - 1)
+        class_1_keys.append(class_1_keys[random_var])
+
+    for _ in range(3):
+        class_1_keys.extend(class_1_keys)
+        class_0_keys.extend(class_0_keys)
+
+    print(f"len(c1) = {len(class_1_keys)}")
+    print(f"len(c0) = {len(class_0_keys)}")
+
+    # Iterate through class_1_keys and class_0_keys in an alternating fashion
+    class_1_keys_iter = iter(class_1_keys)
+    class_0_keys_iter = iter(class_0_keys)
+    while True:
+        try:
+            yield next(class_1_keys_iter)
+        except StopIteration:
+            break
+        try:
+            yield next(class_0_keys_iter)
+        except StopIteration:
+            break
+
+
 def dataloader_augment():
     """
-    Organise data for the training pipeline.
+    For each yield from the video_keyframe function, opens the video
+    and gets the 32-frame sequence. The video number corresponds to the video
+    name from the video_names function.
     :yield: input (1, 32, 112, 112, 3), labels [1.0, 0.0]
     """
-    # Load image and video dictionaries
-    image_dict = return_image_fns_dict()
-    video_dict = return_video_fns_dict()
+    # Get the dictionary of video names {'0': '0_r_t_b.avi', ...}
+    video_names_dict = get_video_names_dict()
 
-    print(f"image_dict.keys() = {list(image_dict.keys())}")
-
+    # Skip videos belonging to the test set
     test_set_numbers = [25, 26, 27, 28, 29, 30, 31, 32, 33, 34]
-    all_numbers = [x for x in range(50)]
-    for number in all_numbers:
-        if number in test_set_numbers:
-            try:
-                del image_dict[str(number)]
-            except KeyError:
-                pass
+    for number in test_set_numbers:
+        try:
+            del video_names_dict[str(number)]
+        except KeyError:
+            pass
 
-    # Get a list of keys and shuffle them
-    keys = list(image_dict.keys())
-    random.shuffle(keys)
+    for video_num, key_frame in video_keyframe():
+        # Get the name of the video.
+        try:
+            video_name = video_names_dict[str(video_num)]
+        except KeyError:
+            continue
+        video_path = os.path.join("data/data/videos", video_name)
 
-    print(f"image_dict.keys() = {list(image_dict.keys())}")
+        # Unpack the video into frames.
+        video_data = unpack_video(video_path)
+        if video_data is None:
+            print(f"video_data skip = {video_data}")
+            continue  # Skip to next video if current video couldn't be opened.
 
-    for key in keys:
-        item = image_dict[key]
-        # item = {'image_no': '0', 'video_no': '1', ..., 'temporal_index': '94', 'video_filename': '1_r_t_b.avi'}
-        video_name = '_'.join(list(video_dict[item["video_no"]].values())) + '.avi'
-        video_data = unpack_video(f'data/data/videos/{video_name}')
-        data = get_continuous_frames(video_data, frame_index=int(item["temporal_index"]))
+        # Get the 32-frame sequence.
+        data = get_continuous_frames(video_data, frame_index=key_frame)
+
         # Calculate labels, b = benign, m = malignant, [b, m] -> if b : [1, 0] ? [0, 1]
         labels = [0.0, 0.0]
-        if item["y_actual"] == 'b':
+        # print(f"{video_name.split('_')[-1][0]} = video_name.split('_')[-1][0]")
+        if video_name.split('_')[-1][0] == 'b':
             labels[0] = 1.0
         else:
             labels[1] = 1.0
         labels = torch.tensor(labels)
 
-        # Fix class 1,0 ratio of 4250 : 2380
-        if labels[0] == 1.0:
-            iters_ = 5
-        else:
-            iters_ = 9
         # Apply random modifications and iterate over the same 32 frames 5 times
-        for _ in range(iters_):
-            modified_data = data_augment(data)
-            # modified_data = np.expand_dims(modified_data, axis=0)
-            # modified_data = np.transpose(modified_data, (0, 4, 1, 2, 3))
-            modified_data = np.transpose(modified_data, (3, 0, 1, 2))
-            # Pass C3D input and labels
-            # Normalize data to be between 0 and 1
-            modified_data = (modified_data - np.min(modified_data)) / (np.max(modified_data) - np.min(modified_data))
-            modified_data = torch.from_numpy(modified_data.copy()).float()
-            yield modified_data, labels
+        modified_data = data_augment(data)
+        modified_data = np.transpose(modified_data, (3, 0, 1, 2))
+        # Normalize data to be between 0 and 1
+        modified_data = (modified_data - np.min(modified_data)) / (np.max(modified_data) - np.min(modified_data))
+        modified_data = torch.from_numpy(modified_data.copy()).float()
+        yield modified_data, labels
 
 
 if __name__ == '__main__':

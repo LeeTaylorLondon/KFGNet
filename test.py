@@ -20,7 +20,7 @@ if __name__ == '__main__':
     c3d = C3D(num_classes=2)
 
     # print(f"\nc3d.train_c3d() = {c3d.train_c3d(1)}")
-    c3d.load_checkpoint("checkpoints/augmented_normalized_ratiosampling_batchsize64/C3D_at_epoch39.pth")
+    c3d.load_checkpoint("checkpoints/augmented_normalized_ratiosampling_batchsize64_patch/C3D_at_epoch16.pth")
 
     preds = []
     labels_list = []
