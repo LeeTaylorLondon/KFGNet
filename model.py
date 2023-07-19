@@ -317,7 +317,7 @@ class C3D(nn.Module):
 
                 # Track loss variables during training
                 running_loss, average_loss = 0.0, 0.0
-                max_iter = len(trainloader)
+                # max_iter = len(trainloader)
 
                 # Training Loop
                 for i, data in enumerate(trainloader):
@@ -357,7 +357,7 @@ class C3D(nn.Module):
                     # Calcualte and Average the loss
                     loss = loss_cls + loss_motion
                     loss = loss.mean()
-                    y_pred = f.softmax(outputs, dim=0).detach().numpy()
+                    y_pred = outputs.detach().numpy()
 
                     # Out single batch updates
                     print(
@@ -370,11 +370,10 @@ class C3D(nn.Module):
                     self.optimizer.zero_grad()
                     loss.backward()
                     self.optimizer.step()
-                    self.optimizer.zero_grad()
 
                     # Sum loss
                     running_loss += loss
-                    average_loss = running_loss / max_iter
+                    average_loss = running_loss / 264
 
                 # End of epoch
                 print(f"Epoch: {self.epoch}, Total Loss: {running_loss}, Avg Loss: {average_loss}")
